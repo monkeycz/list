@@ -1,0 +1,31 @@
+#!/bin/bash
+
+local_path=`dirname "$0"`
+root_path="${local_path}/.."
+
+include_path="${root_path}/include"
+src_path="${root_path}/src"
+test_path="${root_path}/test"
+
+cc=gcc
+c_flag="-std=c99 -O2 -I$include_path"
+
+dst_file="/tmp/$RANDOM"
+
+unit_test()
+{
+	$cc $c_flag -o "$dst_file" $*
+	$dst_file
+	rm "$dst_file"
+}
+
+unit_test_all()
+{
+	unit_test "${test_path}/list_test.c"
+	unit_test "${test_path}/list_i_test.c" "${src_path}/list_i.c"
+	unit_test "${test_path}/list_s_test.c" "${src_path}/list_s.c"
+	unit_test "${test_path}/list_p_test.c" "${src_path}/list_p.c"
+	unit_test "${test_path}/list_n_test.m" "${src_path}/list_n.m" "-framework Foundation"
+}
+
+unit_test_all

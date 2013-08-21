@@ -1,0 +1,138 @@
+#!/bin/bash
+
+project_name="list"
+type_name_list=("i s p n")
+
+local_path=`dirname "$0"`
+root_path="${local_path}/.."
+
+include_path="${root_path}/include"
+src_path="${root_path}/src"
+test_path="${root_path}/test"
+lib_path="${root_path}/lib/mac"
+configure_path="${root_path}/configure"
+build_path="${root_path}/build"
+
+lib_x86_path="$lib_path"
+lib_x64_path="${lib_path}/x64"
+
+cc="gcc"
+c_flag="-std=c99 -O2 -c -I$include_path"
+
+typegen_filename="typegen.py"
+typegen_file_path="${build_path}/$typegen_filename"
+
+lib_include_path="${include_path}/$project_name"
+lib_filename="lib${project_name}.a"
+
+filename()
+{
+	local basename=`basename "$1"`
+	echo "${basename%.*}"
+}
+
+absolute_dir()
+{
+	local relative_dir="$1"
+	local absolute_dir=""
+	local current_dir="$PWD"
+	cd "$relative_dir"
+	if [ $? == 0 ]; then
+		absolute_dir="$PWD"
+	else
+		absolute_dir="$relative_dir"
+	fi
+	cd "$current_dir"
+	echo "$absolute_dir"
+}
+
+export PYTHONPATH="$PYTHONPATH:$(absolute_dir "$configure_path")"
+
+generate()
+{
+	local configure_name="$1"
+	if [ -z "$configure_name" ]; then
+		return 1
+	fi
+
+	local result=$(cd $build_path && python -B $typegen_file_path $configure_name)
+	local success=$(echo "$result" | sed -n 1p)
+	if [ "$success" != "ok" ]; then
+		return 1
+	fi
+
+	local include_filename=$(echo "$result" | sed -n 2p)
+	local src_filename=$(echo "$result" | sed -n 3p)
+
+	local include_file_path="${build_path}/$include_filename"
+	local src_file_path="${build_path}/$src_filename"
+
+	mkdir -p "$lib_include_path"
+	mv "$include_file_path" "$lib_include_path"
+
+	mkdir -p "${src_path}"
+	mv "$src_file_path" "$src_path"
+
+	echo "${src_path}/$(basename "$src_file_path")"
+	return 0
+}
+
+generate_all()
+{
+	for type_name in $type_name_list; do
+		local configure_name="${project_name}_${type_name}_configure"
+		echo $(generate "$configure_name")
+	done
+}
+
+build()
+{
+	local arch="$1"
+	local src_file_path="$2"
+	if [ -z "$src_file_path" ]; then
+		return 1
+	fi
+
+	local obj_file_path="${build_path}/$(filename "$src_file_path").o"
+	local lib_file_path="${build_path}/$lib_filename"
+
+	$cc $c_flag -arch "$arch" -o "$obj_file_path" "$src_file_path"
+	ar -r "$lib_file_path" "$obj_file_path"
+	rm "$obj_file_path"
+
+	return 0
+}
+
+build_all()
+{
+	local arch="$1"
+
+	for src_file_path in $(generate_all); do
+		build "$arch" "$src_file_path"
+	done
+}
+
+deploy()
+{
+	local dst_path="$1"
+
+	local lib_file_path="${build_path}/$lib_filename"
+
+	mkdir -p "$dst_path"
+	mv "$lib_file_path" "$dst_path"
+}
+
+build_deploy_x86()
+{
+	build_all "i386"
+	deploy "$lib_x86_path"
+}
+
+build_deploy_x64()
+{
+	build_all "x86_64"
+	deploy "$lib_x64_path"
+}
+
+build_deploy_x86
+build_deploy_x64
